@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import jwt
@@ -18,20 +19,21 @@ db = SQLAlchemy(app)
 # User class, linked to stories user has created
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    public_id = db.Column(db.Integer, unique=True)
+    public_id = db.Column(db.String, unique=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     password = db.Column(db.String(80), nullable=False)
     # admin = db.Column(db.Boolean)
     stories = db.relationship('Story', backref='author')
 
-    def __init__(self, username, password):
+    def __init__(self, public_id, username, password):
+        self.public_id = public_id
         self.username = username
         self.password = password
 
 # Story class, linked to author and the chapters of the story
 class Story(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    author_id = db.Column(db.Integer, db.ForeignKey('user.public_id'))
     title = db.Column(db.String(80))
     genre = db.Column(db.String)
     summary = db.Column(db.String)
@@ -63,7 +65,16 @@ class Chapter(db.Model):
 # Create a user
 @app.route('/user', methods=['POST'])
 def create_user():
-    return ''
+    username = request.json['name']
+    password = request.json['password']
+    public_id = str(uuid.uuid4())
+
+    new_user = User(public_id, username, password)
+
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({'message' : 'New user has been created'})
 
 # Update user
 @app.route('/user/<public_id>', methods=['PUT'])
