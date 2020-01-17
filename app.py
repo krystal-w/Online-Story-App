@@ -87,7 +87,16 @@ def update_user(penname):
 # Delete a user
 @app.route('/user/<penname>', methods=['DELETE'])
 def delete_user(penname):
-    return ''
+    user = User.query.filter_by(penname=penname).first
+
+    if not user:
+        return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
+
+    db.session.delete(user)
+    db.session.commit()
+
+    #TODO: delete stories and chapters at the same time as user?
+    return make_response(jsonify({'message' : 'User has been successfully deleted.'}))
 
 # Get a user
 @app.route('/user/<penname>', methods=['GET'])
