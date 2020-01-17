@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -19,21 +19,21 @@ db = SQLAlchemy(app)
 # User class, linked to stories user has created
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    public_id = db.Column(db.String, unique=True)
-    username = db.Column(db.String(20), unique=True, nullable=False)
+    public_id = db.Column(db.Integer, unique=True)
+    penname = db.Column(db.String(20), unique=True, nullable=False)
     password = db.Column(db.String(80), nullable=False)
-    # admin = db.Column(db.Boolean)
     stories = db.relationship('Story', backref='author')
 
-    def __init__(self, public_id, username, password):
+    def __init__(self, public_id, penname, password):
         self.public_id = public_id
-        self.username = username
+        self.penname = penname
         self.password = password
 
 # Story class, linked to author and the chapters of the story
 class Story(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    author_id = db.Column(db.Integer, db.ForeignKey('user.public_id'))
+    story_public_id = db.Column(db.Integer, unique=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     title = db.Column(db.String(80))
     genre = db.Column(db.String)
     summary = db.Column(db.String)
@@ -41,7 +41,8 @@ class Story(db.Model):
     num_chapters = db.Column(db.Integer)
     completed = db.Column(db.Boolean)
 
-    def __init__(self, author_id, title, genre):
+    def __init__(self, story_public_id, author_id, title, genre):
+        self.story_public_id = story_public_id
         self.author_id = author_id
         self.title = title
         self.genre = genre
@@ -51,12 +52,14 @@ class Story(db.Model):
 # Chapter class, linked to story it is from
 class Chapter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    chapter_public_id = db.Column(db.Integer, unique=True)
     story_id = db.Column(db.Integer, db.ForeignKey('story.id'))
     title = db.Column(db.String(80))
     number = db.Column(db.Integer)
     text = db.Column(db.String)
 
-    def __init__(self, story_id, title, number, text):
+    def __init__(self, chapter_public_id, story_id, title, number, text):
+        self.chapter_public_id = chapter_public_id
         self.story_id = story_id
         self.title = title
         self.number = number
@@ -65,31 +68,41 @@ class Chapter(db.Model):
 # Create a user
 @app.route('/user', methods=['POST'])
 def create_user():
-    username = request.json['name']
+    penname = request.json['penname']
     password = request.json['password']
-    public_id = str(uuid.uuid4())
+    public_id = hash(str(uuid.uuid4())) % 1000000
 
-    new_user = User(public_id, username, password)
+    new_user = User(public_id, penname, password)
 
     db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({'message' : 'New user has been created'})
+    return make_response(jsonify({'message' : 'New user has been created.'}), 200)
 
 # Update user
-@app.route('/user/<public_id>', methods=['PUT'])
-def update_user(public_id):
+@app.route('/user/<penname>', methods=['PUT'])
+def update_user(penname):
     return ''
 
 # Delete a user
-@app.route('/user/<public_id>', methods=['DELETE'])
-def delete_user(public_id):
+@app.route('/user/<penname>', methods=['DELETE'])
+def delete_user(penname):
     return ''
 
 # Get a user
-@app.route('/user/<public_id>', methods=['GET'])
-def get_user(public_id):
-    return ''
+@app.route('/user/<penname>', methods=['GET'])
+def get_user(penname):
+    user = User.query.filter_by(penname=penname).first
+
+    if not user:
+        return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
+
+    user_data : {}
+    user_data['public_id'] = user.public_id
+    user_data['penname'] = user.penname
+    user_data['password'] = user.password
+    
+    return make_response(jsonify({'user' : user_data}), 200)
 
 # Create a story
 @app.route('/story', methods=['POST'])
@@ -97,18 +110,18 @@ def create_story():
     return ''
 
 # Update story
-@app.route('/story/<id>', methods=['PUT'])
-def update_story(id):
+@app.route('/story/<story_public_id>', methods=['PUT'])
+def update_story(story_public_id):
     return ''
 
 # Delete a story
-@app.route('/story/<id>', methods=['DELETE'])
-def delete_story(id):
+@app.route('/story/<story_public_id>', methods=['DELETE'])
+def delete_story(story_public_id):
     return ''
 
 # Get list of stories created by user
-@app.route('/user/<author_id>/story', methods=['GET'])
-def get_user_stories(author_id):
+@app.route('/user/<penname>/story', methods=['GET'])
+def get_user_stories(penname):
     return ''
 
 # Get list of stories by genre
@@ -118,18 +131,18 @@ def get_story_by_genre():
     return ''
 
 # Create a chapter
-@app.route('/story/<story_id>/chapter', methods=['POST'])
-def create_chapter(story_id):
+@app.route('/story/<story_public_id>/chapter', methods=['POST'])
+def create_chapter(story_public_id):
     return ''
 
 # Get a chapter of a story
-@app.route('/story/<story_id>/chapter/<id>', methods=['GET'])
-def get_story_chapter(story_id, id):
+@app.route('/story/<story_public_id>/chapter/<chapter_public_id>', methods=['GET'])
+def get_story_chapter(story_public_id, chapter_public_id):
     return ''
 
 # Get all chapters of story
-@app.route('/story/<id>', methods=['GET'])
-def get_all_chapters(id):
+@app.route('/story/<chapter_public_id>', methods=['GET'])
+def get_all_chapters(chapter_public_id):
     show_all = request.args.get('show_all')
     return  ''
 
