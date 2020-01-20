@@ -33,7 +33,7 @@ class User(db.Model):
 class Story(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     story_public_id = db.Column(db.Integer, unique=True)
-    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    author_id = db.Column(db.Integer, db.ForeignKey('user.public_id'))
     title = db.Column(db.String(80))
     genre = db.Column(db.String)
     summary = db.Column(db.String)
@@ -41,11 +41,12 @@ class Story(db.Model):
     num_chapters = db.Column(db.Integer)
     completed = db.Column(db.Boolean)
 
-    def __init__(self, story_public_id, author_id, title, genre):
+    def __init__(self, story_public_id, author_id, title, genre, summary):
         self.story_public_id = story_public_id
         self.author_id = author_id
         self.title = title
         self.genre = genre
+        self.summary = summary
         self.completed = False
         self.num_chapters = 0
 
@@ -53,7 +54,7 @@ class Story(db.Model):
 class Chapter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chapter_public_id = db.Column(db.Integer, unique=True)
-    story_id = db.Column(db.Integer, db.ForeignKey('story.id'))
+    story_id = db.Column(db.Integer, db.ForeignKey('story.story_public_id'))
     title = db.Column(db.String(80))
     number = db.Column(db.Integer)
     text = db.Column(db.String)
@@ -87,7 +88,7 @@ def update_user(penname):
 # Delete a user
 @app.route('/user/<penname>', methods=['DELETE'])
 def delete_user(penname):
-    user = User.query.filter_by(penname=penname).first
+    user = User.query.filter_by(penname=penname).first()
 
     if not user:
         return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
@@ -101,12 +102,12 @@ def delete_user(penname):
 # Get a user
 @app.route('/user/<penname>', methods=['GET'])
 def get_user(penname):
-    user = User.query.filter_by(penname=penname).first
+    user = User.query.filter_by(penname=penname).first()
 
     if not user:
         return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
 
-    user_data : {}
+    user_data = {}
     user_data['public_id'] = user.public_id
     user_data['penname'] = user.penname
     user_data['password'] = user.password
@@ -116,7 +117,20 @@ def get_user(penname):
 # Create a story
 @app.route('/story', methods=['POST'])
 def create_story():
-    return ''
+    title = request.json['title']
+    author_id = request.json['author_id']
+    genre = request.json['genre']
+    summary = request.json['summary']
+    story_public_id = hash(str(uuid.uuid4())) % 1000000
+
+    new_story = Story(story_public_id, author_id, title, genre, summary)
+    user = User.query.filter_by(public_id=author_id).first()
+    user.stories.append(new_story)
+
+    db.session.add(new_story)
+    db.session.commit()
+
+    return make_response(jsonify({'message' : 'New story has been created'}), 200)
 
 # Update story
 @app.route('/story/<story_public_id>', methods=['PUT'])
