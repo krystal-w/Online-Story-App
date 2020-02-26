@@ -19,21 +19,18 @@ db = SQLAlchemy(app)
 # User class, linked to stories user has created
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    public_id = db.Column(db.Integer, unique=True)
     penname = db.Column(db.String(20), unique=True, nullable=False)
     password = db.Column(db.String(80), nullable=False)
     stories = db.relationship('Story', backref='author')
 
-    def __init__(self, public_id, penname, password):
-        self.public_id = public_id
+    def __init__(self, penname, password):
         self.penname = penname
         self.password = password
 
 # Story class, linked to author and the chapters of the story
 class Story(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    story_public_id = db.Column(db.Integer, unique=True)
-    author_id = db.Column(db.Integer, db.ForeignKey('user.public_id'))
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     title = db.Column(db.String(80))
     genre = db.Column(db.String)
     summary = db.Column(db.String)
@@ -41,8 +38,7 @@ class Story(db.Model):
     num_chapters = db.Column(db.Integer)
     completed = db.Column(db.Boolean)
 
-    def __init__(self, story_public_id, author_id, title, genre, summary):
-        self.story_public_id = story_public_id
+    def __init__(self, author_id, title, genre, summary):
         self.author_id = author_id
         self.title = title
         self.genre = genre
@@ -53,14 +49,12 @@ class Story(db.Model):
 # Chapter class, linked to story it is from
 class Chapter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    chapter_public_id = db.Column(db.Integer, unique=True)
-    story_id = db.Column(db.Integer, db.ForeignKey('story.story_public_id'))
+    story_id = db.Column(db.Integer, db.ForeignKey('story.id'))
     title = db.Column(db.String(80))
     number = db.Column(db.Integer)
     text = db.Column(db.String)
 
-    def __init__(self, chapter_public_id, story_id, title, number, text):
-        self.chapter_public_id = chapter_public_id
+    def __init__(self, story_id, title, number, text):
         self.story_id = story_id
         self.title = title
         self.number = number
@@ -71,9 +65,8 @@ class Chapter(db.Model):
 def create_user():
     penname = request.json['penname']
     password = request.json['password']
-    public_id = hash(str(uuid.uuid4())) % 1000000
 
-    new_user = User(public_id, penname, password)
+    new_user = User(penname, password)
 
     db.session.add(new_user)
     db.session.commit()
@@ -91,7 +84,7 @@ def delete_user(penname):
     user = User.query.filter_by(penname=penname).first()
 
     if not user:
-        return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
+        return make_response(jsonify({'message' : 'User cannot be found.'}), 404)
 
     db.session.delete(user)
     db.session.commit()
@@ -105,10 +98,10 @@ def get_user(penname):
     user = User.query.filter_by(penname=penname).first()
 
     if not user:
-        return make_respone(jsonify({'message' : 'User cannot be found.'}), 404)
+        return make_response(jsonify({'message' : 'User cannot be found.'}), 404)
 
     user_data = {}
-    user_data['public_id'] = user.public_id
+    user_data['id'] = user.id
     user_data['penname'] = user.penname
     user_data['password'] = user.password
     
@@ -121,10 +114,9 @@ def create_story():
     author_id = request.json['author_id']
     genre = request.json['genre']
     summary = request.json['summary']
-    story_public_id = hash(str(uuid.uuid4())) % 1000000
 
-    new_story = Story(story_public_id, author_id, title, genre, summary)
-    user = User.query.filter_by(public_id=author_id).first()
+    new_story = Story(author_id, title, genre, summary)
+    user = User.query.filter_by(id=author_id).first()
     user.stories.append(new_story)
 
     db.session.add(new_story)
@@ -133,14 +125,43 @@ def create_story():
     return make_response(jsonify({'message' : 'New story has been created'}), 200)
 
 # Update story
-@app.route('/story/<story_public_id>', methods=['PUT'])
-def update_story(story_public_id):
-    return ''
+@app.route('/story/<story_id>', methods=['PUT'])
+def update_story(story_id):
+    story = Story.query.filter_by(id=story_id).first()
+
+    if not story:
+        return make_response(jsonify({"message": "Story cannot be found"}), 404)
+
+    story.title = request.json['title']
+    story.author_id = request.json['author_id']
+    story.genre = request.json['genre']
+    story.summary = request.json['summary']
+    story.completed = request.json['completed']
+    db.session.commit()
+
+    story_data = {}
+    story_data['id'] = story.id
+    story_data['title'] = story.title
+    story_data['author_id'] = story.author_id
+    story_data['genre'] = story.genre
+    story_data['summary'] = story.summary
+    story_data['completed'] = story.completed
+    story_data['num_chapters'] = story.num_chapters
+
+    return make_response(jsonify({"story": story_data}), 200)
 
 # Delete a story
-@app.route('/story/<story_public_id>', methods=['DELETE'])
-def delete_story(story_public_id):
-    return ''
+@app.route('/story/<story_id>', methods=['DELETE'])
+def delete_story(story_id):
+    story = Story.query.filter_by(id=story_id). first()
+
+    if not story:
+        return make_response(jsonify({"message": "Story cannot be found"}), 404)
+
+    db.session.delete(story)
+    db.session.commit()
+
+    return make_response(jsonify({"message": "Story has been successfully delete"}), 200)
 
 # Get list of stories created by user
 @app.route('/user/<penname>/story', methods=['GET'])
@@ -154,18 +175,18 @@ def get_story_by_genre():
     return ''
 
 # Create a chapter
-@app.route('/story/<story_public_id>/chapter', methods=['POST'])
-def create_chapter(story_public_id):
+@app.route('/story/<story_id>/chapter', methods=['POST'])
+def create_chapter(story_id):
     return ''
 
 # Get a chapter of a story
-@app.route('/story/<story_public_id>/chapter/<chapter_public_id>', methods=['GET'])
-def get_story_chapter(story_public_id, chapter_public_id):
+@app.route('/story/<story_id>/chapter/<chapter_id>', methods=['GET'])
+def get_story_chapter(story_id, chapter_id):
     return ''
 
 # Get all chapters of story
-@app.route('/story/<chapter_public_id>', methods=['GET'])
-def get_all_chapters(chapter_public_id):
+@app.route('/story/<story_id>', methods=['GET'])
+def get_all_chapters(story_id):
     show_all = request.args.get('show_all')
     return  ''
 
